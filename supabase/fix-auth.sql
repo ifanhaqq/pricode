@@ -35,7 +35,7 @@ insert into auth.identities (
   updated_at
 )
 select
-  id::text,
+  id,
   id,
   format('{"sub":"%s","email":"%s"}', id::text, email)::jsonb,
   'email',

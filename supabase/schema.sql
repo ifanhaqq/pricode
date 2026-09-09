@@ -580,7 +580,7 @@ begin
     created_at,
     updated_at
   ) values (
-    v_user_id::text,
+    v_user_id,
     v_user_id,
     format('{"sub":"%s","email":"%s"}', v_user_id::text, p_email)::jsonb,
     'email',

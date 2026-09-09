@@ -521,7 +521,14 @@ begin
       created_at,
       updated_at,
       confirmation_token,
-      recovery_token
+      recovery_token,
+      email_change_token_new,
+      email_change_token_current,
+      email_change,
+      phone_change,
+      phone_change_token,
+      reauthentication_token,
+      is_sso_user
     ) values (
       '00000000-0000-0000-0000-000000000000',
       v_user_id,
@@ -535,15 +542,53 @@ begin
       now(),
       now(),
       '',
-      ''
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      false
     );
   else
     update auth.users
     set encrypted_password = v_encrypted_pw,
         email_confirmed_at = coalesce(email_confirmed_at, now()),
-        updated_at = now()
+        updated_at = now(),
+        confirmation_token = coalesce(confirmation_token, ''),
+        recovery_token = coalesce(recovery_token, ''),
+        email_change_token_new = coalesce(email_change_token_new, ''),
+        email_change_token_current = coalesce(email_change_token_current, ''),
+        email_change = coalesce(email_change, ''),
+        phone_change = coalesce(phone_change, ''),
+        phone_change_token = coalesce(phone_change_token, ''),
+        reauthentication_token = coalesce(reauthentication_token, ''),
+        is_sso_user = false
     where id = v_user_id;
   end if;
+
+  -- Create or update matching auth.identities row
+  delete from auth.identities where user_id = v_user_id and provider = 'email';
+  insert into auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) values (
+    v_user_id::text,
+    v_user_id,
+    format('{"sub":"%s","email":"%s"}', v_user_id::text, p_email)::jsonb,
+    'email',
+    v_user_id::text,
+    now(),
+    now(),
+    now()
+  );
 
   -- Assign user role
   insert into public.user_roles (user_id, role)
@@ -565,3 +610,4 @@ $$;
 select public.provision_test_user('admin_test@pricode.local', 'AdminSecret123!', 'admin', 'Admin Instructor');
 select public.provision_test_user('student1_test@pricode.local', 'StudentSecret123!', 'student', 'Budi Santoso');
 select public.provision_test_user('student2_test@pricode.local', 'StudentSecret123!', 'student', 'Siti Rahma');
+

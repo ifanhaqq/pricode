@@ -162,20 +162,20 @@ async function runVerification() {
     assert('Student CANNOT insert course', error !== null, error ? `Blocked: ${error.message}` : 'Unexpectedly allowed!')
   }
   {
-    const { error, count } = await student1.client
+    const { error, data } = await student1.client
       .from('courses')
       .update({ title: 'Student Defaced Course' })
       .eq('id', testCourseId)
       .select()
-    assert('Student CANNOT update course', error !== null || count === 0, error ? `Blocked: ${error.message}` : `Modified ${count} rows`)
+    assert('Student CANNOT update course', error !== null || (data && data.length === 0), error ? `Blocked: ${error.message}` : `Modified ${data?.length} rows`)
   }
   {
-    const { error, count } = await student1.client
+    const { error, data } = await student1.client
       .from('courses')
       .delete()
       .eq('id', testCourseId)
       .select()
-    assert('Student CANNOT delete course', error !== null || count === 0, error ? `Blocked: ${error.message}` : `Deleted ${count} rows`)
+    assert('Student CANNOT delete course', error !== null || (data && data.length === 0), error ? `Blocked: ${error.message}` : `Deleted ${data?.length} rows`)
   }
   {
     const { error } = await student1.client.from('activities').insert({

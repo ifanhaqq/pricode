@@ -3,13 +3,17 @@ import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import QuizEngine, { QuizQuestion, QuizResult } from '../../components/student/QuizEngine'
+import { canAccessFinalQuiz, canAccessCourse, SubCourseGatingItem, CourseGatingItem } from '../../lib/gating'
 import {
   ArrowLeft,
   Award,
   Code2,
   HelpCircle,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  ChevronRight,
+  BookOpen
 } from 'lucide-react'
 
 interface CourseProgress {
@@ -30,6 +34,11 @@ export default function FinalQuizPlayerPage() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null)
 
+  // Gating & lock state
+  const [isLockedByPrerequisites, setIsLockedByPrerequisites] = useState(false)
+  const [lockReason, setLockReason] = useState<string | null>(null)
+  const [uncompletedSubcourseId, setUncompletedSubcourseId] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -44,23 +53,78 @@ export default function FinalQuizPlayerPage() {
     if (!supabase || !courseId) return
     setLoading(true)
     setErrorMessage(null)
+    setIsLockedByPrerequisites(false)
 
     try {
+      let stId = studentProfile?.id
+      if (!stId) {
+        const { data: idData } = await supabase.rpc('get_current_student_id')
+        stId = idData
+      }
+
       // 1. Fetch Course details
       const { data: cData, error: cErr } = await supabase
         .from('courses')
-        .select('title')
+        .select('id, title, order')
         .eq('id', courseId)
         .single()
 
       if (cErr) throw cErr
       if (cData) setCourseTitle(cData.title)
 
-      // 2. Fetch all Subcourses for title mapping
+      // 2. Course-to-Course Gating Check
+      const { data: allCourses } = await supabase
+        .from('courses')
+        .select('id, title, order')
+        .order('order', { ascending: true })
+
+      if (allCourses && allCourses.length > 1 && stId) {
+        // Fetch all course progress
+        const courseProgMap: Record<string, { status?: string }> = {}
+        for (const c of allCourses) {
+          try {
+            const { data: cp } = await supabase
+              .from('progress')
+              .select('status')
+              .eq('student_id', stId)
+              .eq('course_id', c.id)
+              .maybeSingle()
+            if (cp) courseProgMap[c.id] = { status: cp.status }
+          } catch {
+            // column course_id might not exist yet
+          }
+          if (!courseProgMap[c.id]) {
+            const cached = localStorage.getItem(`pricode_progress_${stId}_course_${c.id}`)
+            if (cached) {
+              try {
+                courseProgMap[c.id] = { status: JSON.parse(cached).status }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+
+        const courseGating = canAccessCourse(
+          allCourses as CourseGatingItem[],
+          courseProgMap,
+          courseId
+        )
+
+        if (!courseGating.allowed) {
+          setIsLockedByPrerequisites(true)
+          setLockReason(courseGating.reason || 'Selesaikan kuis akhir kursus sebelumnya terlebih dahulu!')
+          setLoading(false)
+          return
+        }
+      }
+
+      // 3. Fetch all Subcourses for title mapping & Gating Check
       const { data: scData, error: scErr } = await supabase
         .from('sub_courses')
-        .select('id, title')
+        .select('id, title, order, course_id')
         .eq('course_id', courseId)
+        .order('order', { ascending: true })
 
       if (scErr) throw scErr
       const scMap: Record<string, string> = {}
@@ -69,9 +133,33 @@ export default function FinalQuizPlayerPage() {
           scMap[sc.id] = sc.title
         })
         setSubcourseMap(scMap)
+
+        // Subcourse completion check for Final Quiz
+        if (stId && scData.length > 0) {
+          const scIds = scData.map((s) => s.id)
+          const { data: scProgs } = await supabase
+            .from('progress')
+            .select('subcourse_id, status')
+            .eq('student_id', stId)
+            .in('subcourse_id', scIds)
+
+          const scProgMap: Record<string, { status?: string }> = {}
+          scProgs?.forEach((p) => {
+            scProgMap[p.subcourse_id] = { status: p.status }
+          })
+
+          const fqGating = canAccessFinalQuiz(scData as SubCourseGatingItem[], scProgMap)
+          if (!fqGating.allowed) {
+            setIsLockedByPrerequisites(true)
+            setLockReason(fqGating.reason || 'Selesaikan semua sub-materi terlebih dahulu!')
+            setUncompletedSubcourseId(fqGating.redirectSubcourseId || null)
+            setLoading(false)
+            return
+          }
+        }
       }
 
-      // 3. Fetch Final Quiz record
+      // 4. Fetch Final Quiz record
       const { data: qData, error: qErr } = await supabase
         .from('final_quizzes')
         .select('*')
@@ -83,7 +171,7 @@ export default function FinalQuizPlayerPage() {
       if (qData) {
         setQuizTitle(qData.title || `Kuis Akhir Kursus: ${cData?.title || ''}`)
 
-        // 4. Fetch Questions for this Final Quiz
+        // Fetch Questions for this Final Quiz
         const { data: questionsData, error: questionsErr } = await supabase
           .from('questions')
           .select('*')
@@ -106,12 +194,6 @@ export default function FinalQuizPlayerPage() {
       }
 
       // 5. Fetch student's course progress
-      let stId = studentProfile?.id
-      if (!stId) {
-        const { data: idData } = await supabase.rpc('get_current_student_id')
-        stId = idData
-      }
-
       let loadedProgress: CourseProgress | null = null
 
       if (stId) {
@@ -232,7 +314,7 @@ export default function FinalQuizPlayerPage() {
         <div className="card-brutal bg-white p-8 text-center space-y-4 shadow-brutal max-w-sm w-full">
           <Sparkles className="w-10 h-10 animate-spin mx-auto text-retro-yellow" />
           <h2 className="text-base font-black tracking-tight">Memuat Kuis Akhir Kursus...</h2>
-          <p className="text-xs text-neutral-600 font-medium">Menyiapkan soal evaluasi komprehensif.</p>
+          <p className="text-xs text-neutral-600 font-medium">Memeriksa kelengkapan sub-materi prasyarat.</p>
         </div>
       </div>
     )
@@ -299,7 +381,43 @@ export default function FinalQuizPlayerPage() {
           </div>
         )}
 
-        {questions.length === 0 ? (
+        {/* Gating Lock Screen if Prerequisite Subcourses / Courses Not Completed */}
+        {isLockedByPrerequisites ? (
+          <div className="card-brutal bg-white p-8 sm:p-12 text-center space-y-6 shadow-brutal-lg max-w-lg mx-auto border-2 border-black">
+            <div className="w-16 h-16 rounded-2xl bg-retro-pink text-white border-2 border-black flex items-center justify-center mx-auto shadow-brutal-sm">
+              <Lock className="w-8 h-8 stroke-[2.5]" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="badge-brutal bg-retro-pink text-white text-xs font-mono font-black">
+                AKSES KUIS AKHIR TERKUNCI
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-black tracking-tight">
+                Prasyarat Belum Terpenuhi
+              </h3>
+              <p className="text-xs sm:text-sm text-neutral-600 font-medium leading-relaxed">
+                {lockReason ||
+                  'Kamu harus menyelesaikan seluruh materi dan kuis sub-materi terlebih dahulu sebelum mengikuti Kuis Akhir ini.'}
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link to="/dashboard" className="btn-brutal-white text-xs py-2.5 px-4 w-full sm:w-auto">
+                Kembali ke Dashboard
+              </Link>
+              {uncompletedSubcourseId && (
+                <Link
+                  to={`/learn/${uncompletedSubcourseId}`}
+                  className="btn-brutal-yellow text-xs py-2.5 px-5 w-full sm:w-auto inline-flex items-center justify-center gap-2 font-black"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Buka Sub-Materi yang Belum Selesai</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              )}
+            </div>
+          </div>
+        ) : questions.length === 0 ? (
           <div className="card-brutal bg-white p-12 text-center space-y-4 shadow-brutal max-w-lg mx-auto">
             <HelpCircle className="w-12 h-12 mx-auto text-retro-yellow" />
             <h3 className="text-lg font-black text-black">Kuis Akhir Belum Tersedia</h3>

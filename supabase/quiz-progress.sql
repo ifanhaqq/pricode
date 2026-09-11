@@ -21,3 +21,6 @@ create unique index if not exists idx_progress_student_course on public.progress
 -- Index for querying course progress
 create index if not exists idx_progress_course on public.progress(course_id);
 
+-- 2. Activity Progression: Track completed activities within each subcourse
+alter table public.progress add column if not exists completed_activities text[] default '{}'::text[];
+

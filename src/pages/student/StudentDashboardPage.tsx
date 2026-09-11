@@ -3,6 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import {
+  canAccessSubcourse,
+  canAccessFinalQuiz,
+  canAccessCourse,
+  SubCourseGatingItem,
+  CourseGatingItem
+} from '../../lib/gating'
+import {
   Code2,
   BookOpen,
   LogOut,
@@ -14,7 +21,8 @@ import {
   Sparkles,
   Award,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from 'lucide-react'
 
 interface SubCourseWithProgress {
@@ -29,6 +37,7 @@ interface CourseItemWithQuizzes {
   id: string
   title: string
   description?: string
+  order: number
   subcourses: SubCourseWithProgress[]
   finalQuizId: string | null
   finalQuizTitle: string | null
@@ -184,7 +193,6 @@ export default function StudentDashboardPage() {
         }
 
         if (progRow) {
-          // Resolve weakest subcourse title
           if (progRow.weakest_subcourse_id && scData) {
             const sc = scData.find((s) => s.id === progRow!.weakest_subcourse_id)
             if (sc) {
@@ -217,6 +225,7 @@ export default function StudentDashboardPage() {
           id: c.id,
           title: c.title,
           description: c.description,
+          order: c.order,
           subcourses: cSubcourses,
           finalQuizId: fQuiz?.id || null,
           finalQuizTitle: fQuiz?.title || null,
@@ -313,7 +322,22 @@ export default function StudentDashboardPage() {
         ) : (
           <div className="space-y-8">
             {courses.map((course) => {
-              // Check cooldown on this course
+              // Course-to-course gating check
+              const allCoursesMeta: CourseGatingItem[] = courses.map((c) => ({
+                id: c.id,
+                title: c.title,
+                order: c.order
+              }))
+              const courseProgMap: Record<string, { status?: string }> = {}
+              courses.forEach((c) => {
+                if (c.courseProgress) {
+                  courseProgMap[c.id] = { status: c.courseProgress.status }
+                }
+              })
+              const courseGating = canAccessCourse(allCoursesMeta, courseProgMap, course.id)
+              const isCourseLocked = !courseGating.allowed
+
+              // Cooldown timer check
               const cooldownUntil = course.courseProgress?.cooldown_until
               const cooldownMs = cooldownUntil ? new Date(cooldownUntil).getTime() - currentTime : 0
               const isCooldownActive = cooldownMs > 0
@@ -324,27 +348,66 @@ export default function StudentDashboardPage() {
 
               const isCourseCompleted = course.courseProgress?.status === 'completed'
 
+              // Subcourse progress mapping for gating
+              const subcoursesGatingItems: SubCourseGatingItem[] = course.subcourses.map((sc) => ({
+                id: sc.id,
+                title: sc.title,
+                order: sc.order,
+                course_id: course.id
+              }))
+
+              const scProgMap: Record<string, { status?: string }> = {}
+              course.subcourses.forEach((sc) => {
+                scProgMap[sc.id] = { status: sc.status }
+              })
+
+              // Final Quiz gating check
+              const fqGating = canAccessFinalQuiz(subcoursesGatingItems, scProgMap)
+              const isFinalQuizPrereqLocked = !fqGating.allowed
+
               return (
                 <div
                   key={course.id}
-                  className="card-brutal bg-white p-6 sm:p-8 space-y-6 border-2 border-black shadow-brutal-lg"
+                  className={`card-brutal bg-white p-6 sm:p-8 space-y-6 border-2 border-black shadow-brutal-lg transition ${
+                    isCourseLocked ? 'opacity-70 bg-neutral-50' : ''
+                  }`}
                 >
                   {/* Course Header */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-black pb-4">
                     <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-xl bg-retro-lavender border-2 border-black flex items-center justify-center shadow-brutal-sm flex-shrink-0">
-                        <BookOpen className="w-6 h-6 text-black stroke-[2.5]" />
+                      <div
+                        className={`w-12 h-12 rounded-xl border-2 border-black flex items-center justify-center shadow-brutal-sm flex-shrink-0 ${
+                          isCourseLocked
+                            ? 'bg-neutral-200 text-neutral-500'
+                            : 'bg-retro-lavender text-black'
+                        }`}
+                      >
+                        {isCourseLocked ? (
+                          <Lock className="w-6 h-6 stroke-[2.5]" />
+                        ) : (
+                          <BookOpen className="w-6 h-6 stroke-[2.5]" />
+                        )}
                       </div>
                       <div>
-                        <span className="badge-brutal text-[10px] bg-retro-green text-black mb-1 inline-block font-mono">
-                          KURSUS AKTIF
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`badge-brutal text-[10px] mb-1 inline-block font-mono ${
+                              isCourseLocked
+                                ? 'bg-neutral-300 text-neutral-700'
+                                : 'bg-retro-green text-black'
+                            }`}
+                          >
+                            {isCourseLocked ? 'KURSUS TERKUNCI' : 'KURSUS AKTIF'}
+                          </span>
+                        </div>
                         <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                           {course.title}
                         </h2>
                         <p className="text-xs text-neutral-600 font-medium">
-                          {course.description ||
-                            'Pengenalan konsep logika komputasi dan tantangan coding interaktif.'}
+                          {isCourseLocked
+                            ? courseGating.reason
+                            : course.description ||
+                              'Pengenalan konsep logika komputasi dan tantangan coding interaktif.'}
                         </p>
                       </div>
                     </div>
@@ -355,6 +418,11 @@ export default function StudentDashboardPage() {
                           <Award className="w-4 h-4 stroke-[2.5]" />
                           <span>KURSUS TUNTAS ({course.courseProgress?.quiz_score}%)</span>
                         </span>
+                      ) : isCourseLocked ? (
+                        <span className="badge-brutal bg-neutral-200 text-neutral-600 text-xs py-1.5 px-3 flex items-center gap-1.5 font-mono">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>TERKUNCI</span>
+                        </span>
                       ) : (
                         <span className="badge-brutal bg-retro-yellow text-black text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold">
                           <CheckCircle2 className="w-4 h-4 stroke-[3]" />
@@ -364,7 +432,7 @@ export default function StudentDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Subcourses List */}
+                  {/* Subcourses List with Gating Protection */}
                   <div className="space-y-3">
                     <h3 className="text-xs font-mono font-black uppercase text-neutral-500 tracking-wider">
                       Daftar Sub-Materi & Evaluasi:
@@ -378,15 +446,31 @@ export default function StudentDashboardPage() {
                       <div className="grid grid-cols-1 gap-3">
                         {course.subcourses.map((sc, index) => {
                           const isCompleted = sc.status === 'completed'
+                          const scGating = canAccessSubcourse(
+                            subcoursesGatingItems,
+                            scProgMap,
+                            sc.id
+                          )
+                          const isSubcourseLocked = !scGating.allowed || isCourseLocked
 
                           return (
                             <div
                               key={sc.id}
-                              className="bg-[#FAF7EE] border-2 border-black rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-brutal-sm hover:bg-white transition"
+                              className={`border-2 border-black rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-brutal-sm transition ${
+                                isSubcourseLocked
+                                  ? 'bg-neutral-100 opacity-70'
+                                  : 'bg-[#FAF7EE] hover:bg-white'
+                              }`}
                             >
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="w-6 h-6 rounded-md bg-retro-yellow border border-black text-black font-mono font-black text-xs flex items-center justify-center">
+                                  <span
+                                    className={`w-6 h-6 rounded-md border border-black font-mono font-black text-xs flex items-center justify-center ${
+                                      isSubcourseLocked
+                                        ? 'bg-neutral-200 text-neutral-500'
+                                        : 'bg-retro-yellow text-black'
+                                    }`}
+                                  >
                                     {index + 1}
                                   </span>
                                   <span className="badge-brutal bg-black text-white text-[10px] font-mono">
@@ -398,20 +482,39 @@ export default function StudentDashboardPage() {
                                       <span>Lulus ({sc.quizScore}%)</span>
                                     </span>
                                   )}
+                                  {isSubcourseLocked && (
+                                    <span className="badge-brutal bg-neutral-300 text-neutral-700 text-[10px] font-mono flex items-center gap-1">
+                                      <Lock className="w-3 h-3" />
+                                      <span>Terkunci</span>
+                                    </span>
+                                  )}
                                 </div>
                                 <h4 className="text-base font-black text-black">{sc.title}</h4>
                                 <p className="text-xs text-neutral-600">
-                                  Baca materi, tonton video, pecahkan balok kode IA1 & IA2, serta selesaikan kuis sub-materi.
+                                  {isSubcourseLocked
+                                    ? scGating.reason || 'Selesaikan sub-materi sebelumnya terlebih dahulu.'
+                                    : 'Baca materi, tonton video, pecahkan balok kode IA1 & IA2, serta selesaikan kuis sub-materi.'}
                                 </p>
                               </div>
 
-                              <Link
-                                to={`/learn/${sc.id}`}
-                                className="btn-brutal-yellow text-xs py-2 px-4 inline-flex items-center justify-center gap-2 flex-shrink-0 font-black"
-                              >
-                                <Play className="w-3.5 h-3.5 fill-black" />
-                                <span>{isCompleted ? 'Pelajari Ulang' : 'Mulai Belajar ➔'}</span>
-                              </Link>
+                              {isSubcourseLocked ? (
+                                <button
+                                  disabled
+                                  className="btn-brutal-white text-xs py-2 px-4 inline-flex items-center justify-center gap-1.5 opacity-50 cursor-not-allowed font-mono text-neutral-600"
+                                  title={scGating.reason || 'Selesaikan materi sebelumnya terlebih dahulu'}
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                  <span>Terkunci</span>
+                                </button>
+                              ) : (
+                                <Link
+                                  to={`/learn/${sc.id}`}
+                                  className="btn-brutal-yellow text-xs py-2 px-4 inline-flex items-center justify-center gap-2 flex-shrink-0 font-black"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-black" />
+                                  <span>{isCompleted ? 'Pelajari Ulang' : 'Mulai Belajar ➔'}</span>
+                                </Link>
+                              )}
                             </div>
                           )
                         })}
@@ -419,13 +522,15 @@ export default function StudentDashboardPage() {
                     )}
                   </div>
 
-                  {/* Course Final Quiz Section Card */}
+                  {/* Course Final Quiz Section Card with Prerequisite Gating */}
                   <div
                     className={`card-brutal border-2 border-black p-5 sm:p-6 rounded-2xl shadow-brutal flex flex-col sm:flex-row sm:items-center justify-between gap-5 ${
                       isCourseCompleted
                         ? 'bg-[#D1FAE5]'
                         : isCooldownActive
                         ? 'bg-[#FFE4E6]'
+                        : isFinalQuizPrereqLocked || isCourseLocked
+                        ? 'bg-neutral-100 opacity-80'
                         : 'bg-retro-yellow/20'
                     }`}
                   >
@@ -445,6 +550,11 @@ export default function StudentDashboardPage() {
                             <Clock className="w-3.5 h-3.5 animate-pulse" />
                             <span>COOLDOWN: {formattedTimer}</span>
                           </span>
+                        ) : isFinalQuizPrereqLocked || isCourseLocked ? (
+                          <span className="badge-brutal bg-neutral-300 text-neutral-700 text-xs font-mono font-black flex items-center gap-1">
+                            <Lock className="w-3 h-3" />
+                            <span>PRASYARAT BELUM SELESAI</span>
+                          </span>
                         ) : (
                           <span className="badge-brutal bg-retro-yellow text-black text-xs font-mono font-black">
                             SIAP DIKERJAKAN
@@ -461,6 +571,8 @@ export default function StudentDashboardPage() {
                           ? 'Selamat! Kamu telah lulus kuis akhir dan berhasil menguasai seluruh materi dalam kursus ini.'
                           : isCooldownActive
                           ? 'Kamu sedang dalam masa jeda 10 menit setelah percobaan sebelumnya. Harap pelajari kembali materi yang direkomendasikan sebelum mencoba lagi.'
+                          : isFinalQuizPrereqLocked
+                          ? fqGating.reason || 'Selesaikan seluruh sub-materi di atas terlebih dahulu untuk membuka Kuis Akhir.'
                           : 'Uji pemahaman komprehensif seluruh materi kursus. Batas lulus 70%. Kegagalan akan mengunci kuis selama 10 menit.'}
                       </p>
 
@@ -479,33 +591,43 @@ export default function StudentDashboardPage() {
                     </div>
 
                     <div className="shrink-0 flex flex-col gap-2">
-                      <Link
-                        to={`/courses/${course.id}/final-quiz`}
-                        className={`text-xs py-3 px-5 inline-flex items-center justify-center gap-2 font-black text-center ${
-                          isCooldownActive
-                            ? 'btn-brutal-white border-2 border-black'
-                            : isCourseCompleted
-                            ? 'btn-brutal-green'
-                            : 'btn-brutal-yellow'
-                        }`}
-                      >
-                        {isCooldownActive ? (
-                          <>
-                            <Clock className="w-4 h-4" />
-                            <span>Buka Status Cooldown</span>
-                          </>
-                        ) : isCourseCompleted ? (
-                          <>
-                            <Award className="w-4 h-4" />
-                            <span>Lihat Hasil / Ulangi</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4 fill-black" />
-                            <span>Mulai Kuis Akhir ➔</span>
-                          </>
-                        )}
-                      </Link>
+                      {isFinalQuizPrereqLocked || isCourseLocked ? (
+                        <button
+                          disabled
+                          className="btn-brutal-white border-2 border-black text-xs py-3 px-5 inline-flex items-center justify-center gap-2 opacity-50 cursor-not-allowed font-mono text-neutral-600"
+                        >
+                          <Lock className="w-4 h-4" />
+                          <span>Kuis Terkunci</span>
+                        </button>
+                      ) : (
+                        <Link
+                          to={`/courses/${course.id}/final-quiz`}
+                          className={`text-xs py-3 px-5 inline-flex items-center justify-center gap-2 font-black text-center ${
+                            isCooldownActive
+                              ? 'btn-brutal-white border-2 border-black'
+                              : isCourseCompleted
+                              ? 'btn-brutal-green'
+                              : 'btn-brutal-yellow'
+                          }`}
+                        >
+                          {isCooldownActive ? (
+                            <>
+                              <Clock className="w-4 h-4" />
+                              <span>Buka Status Cooldown</span>
+                            </>
+                          ) : isCourseCompleted ? (
+                            <>
+                              <Award className="w-4 h-4" />
+                              <span>Lihat Hasil / Ulangi</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-4 h-4 fill-black" />
+                              <span>Mulai Kuis Akhir ➔</span>
+                            </>
+                          )}
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>

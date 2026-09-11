@@ -56,6 +56,7 @@ export default function BlockSequencer({
   activityType = 'ia1',
   activityTitle,
   blocks,
+  onSuccess,
   onNextActivity
 }: BlockSequencerProps) {
   // Bank Balok (available unplaced blocks) & Alur Program (placed blocks)
@@ -255,6 +256,7 @@ export default function BlockSequencer({
     }
 
     if (allMatches) {
+      onSuccess?.()
       setCheckResult({
         isCorrect: true,
         message: 'HORE! JAWABAN KAMU BENAR! 🎉',

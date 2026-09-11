@@ -7,6 +7,13 @@ import VideoActivityRenderer from '../../components/student/VideoActivityRendere
 import BlockSequencer, { IABlockItem } from '../../components/student/BlockSequencer'
 import QuizEngine, { QuizQuestion, QuizResult } from '../../components/student/QuizEngine'
 import {
+  canAccessActivity,
+  canAccessSubcourse,
+  fetchCompletedActivities,
+  markActivityCompleted,
+  SubCourseGatingItem
+} from '../../lib/gating'
+import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
@@ -17,7 +24,10 @@ import {
   ChevronRight,
   Code2,
   HelpCircle,
-  Award
+  Award,
+  Lock,
+  Check,
+  AlertTriangle
 } from 'lucide-react'
 
 type SupportedActivityType = 'text' | 'video' | 'ia1' | 'ia2' | 'quiz'
@@ -102,49 +112,90 @@ export default function StudentActivityPlayerPage() {
     status: string
   } | null>(null)
 
+  // Progression & Gating state
+  const [completedActivities, setCompletedActivities] = useState<string[]>([])
+  const [gatingAlert, setGatingAlert] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Determine active activity type
-  useEffect(() => {
-    if (
-      routeActivityType &&
-      ['text', 'video', 'ia1', 'ia2', 'quiz'].includes(routeActivityType as SupportedActivityType)
-    ) {
-      setCurrentType(routeActivityType as SupportedActivityType)
-    } else {
-      setCurrentType('text')
+  // Helper: Get student ID
+  const getStudentId = useCallback(async (): Promise<string | null> => {
+    if (studentProfile?.id) return studentProfile.id
+    if (!supabase) return null
+    try {
+      const { data } = await supabase.rpc('get_current_student_id')
+      return data || null
+    } catch {
+      return null
     }
-  }, [routeActivityType])
+  }, [studentProfile?.id])
 
-  // Fetch SubCourse, Course, and Activities
+  // Fetch SubCourse, Course, Sibling Subcourses, and Activities
   const fetchSubCourseActivities = useCallback(async () => {
     if (!supabase || !subcourseId) return
     setLoading(true)
     setErrorMessage(null)
 
     try {
+      const stId = await getStudentId()
+
       // 1. Fetch subcourse & course info
       const { data: scData, error: scErr } = await supabase
         .from('sub_courses')
-        .select('id, title, course_id')
+        .select('id, title, course_id, order')
         .eq('id', subcourseId)
         .single()
 
       if (scErr) throw scErr
-      if (scData) {
-        setSubCourseTitle(scData.title)
+      if (!scData) throw new Error('Sub-materi tidak ditemukan.')
 
-        const { data: cData } = await supabase
-          .from('courses')
-          .select('title')
-          .eq('id', scData.course_id)
-          .single()
+      setSubCourseTitle(scData.title)
 
-        if (cData) setCourseTitle(cData.title)
+      const { data: cData } = await supabase
+        .from('courses')
+        .select('title')
+        .eq('id', scData.course_id)
+        .single()
+
+      if (cData) setCourseTitle(cData.title)
+
+      // 2. SubCourse-to-SubCourse Gating Enforcement
+      const { data: siblingSubcourses } = await supabase
+        .from('sub_courses')
+        .select('id, title, order, course_id')
+        .eq('course_id', scData.course_id)
+        .order('order', { ascending: true })
+
+      if (siblingSubcourses && siblingSubcourses.length > 0 && stId) {
+        const siblingIds = siblingSubcourses.map((s) => s.id)
+        const { data: siblingProgs } = await supabase
+          .from('progress')
+          .select('subcourse_id, status')
+          .eq('student_id', stId)
+          .in('subcourse_id', siblingIds)
+
+        const siblingProgMap: Record<string, { status?: string }> = {}
+        siblingProgs?.forEach((sp) => {
+          siblingProgMap[sp.subcourse_id] = { status: sp.status }
+        })
+
+        const scGating = canAccessSubcourse(
+          siblingSubcourses as SubCourseGatingItem[],
+          siblingProgMap,
+          subcourseId
+        )
+
+        if (!scGating.allowed && scGating.redirectSubcourseId) {
+          setGatingAlert(
+            scGating.reason || 'Akses Dibatasi: Selesaikan sub-materi sebelumnya terlebih dahulu!'
+          )
+          navigate(`/learn/${scGating.redirectSubcourseId}`, { replace: true })
+          return
+        }
       }
 
-      // 2. Fetch activities for this subcourse
+      // 3. Fetch activities for this subcourse
       const { data: actData, error: actErr } = await supabase
         .from('activities')
         .select('*')
@@ -152,15 +203,49 @@ export default function StudentActivityPlayerPage() {
         .order('order', { ascending: true })
 
       if (actErr) throw actErr
-
       setActivities((actData as ActivityItem[]) || [])
+
+      // 4. Fetch student progress & completed activities for this subcourse
+      let isCompleted = false
+      if (stId) {
+        const { data: progData } = await supabase
+          .from('progress')
+          .select('attempts, quiz_score, status')
+          .eq('student_id', stId)
+          .eq('subcourse_id', subcourseId)
+          .maybeSingle()
+
+        if (progData) {
+          setSubcourseProgress(progData)
+          isCompleted = progData.status === 'completed'
+        }
+
+        const acts = await fetchCompletedActivities(stId, subcourseId, isCompleted, supabase)
+        setCompletedActivities(acts)
+
+        // 5. Activity-Level Gating Check on current target activity
+        const targetAct = (routeActivityType as SupportedActivityType) || 'text'
+        const actGating = canAccessActivity(acts, targetAct, isCompleted)
+
+        if (!actGating.allowed) {
+          setGatingAlert(
+            actGating.reason || 'Akses Dibatasi: Selesaikan aktivitas sebelumnya terlebih dahulu!'
+          )
+          setCurrentType(actGating.redirectActivity)
+          navigate(`/learn/${subcourseId}/${actGating.redirectActivity}`, { replace: true })
+        } else {
+          setCurrentType(targetAct)
+        }
+      } else {
+        setCurrentType((routeActivityType as SupportedActivityType) || 'text')
+      }
     } catch (err: unknown) {
       const e = err as Error
       setErrorMessage(e.message || 'Gagal memuat aktivitas materi.')
     } finally {
       setLoading(false)
     }
-  }, [subcourseId])
+  }, [subcourseId, routeActivityType, getStudentId, navigate])
 
   useEffect(() => {
     fetchSubCourseActivities()
@@ -205,7 +290,6 @@ export default function StudentActivityPlayerPage() {
     setLoadingQuiz(true)
 
     try {
-      // 1. Fetch subcourse quiz record
       const { data: qData, error: qErr } = await supabase
         .from('sub_course_quizzes')
         .select('*')
@@ -217,7 +301,6 @@ export default function StudentActivityPlayerPage() {
       if (qData) {
         setQuizTitle(qData.title || `Kuis Evaluasi Sub-Materi: ${subCourseTitle}`)
 
-        // 2. Fetch questions for this quiz
         const { data: questionsData, error: questionsErr } = await supabase
           .from('questions')
           .select('*')
@@ -238,33 +321,13 @@ export default function StudentActivityPlayerPage() {
           )
         }
       }
-
-      // 3. Fetch student's progress for this subcourse
-      let stId = studentProfile?.id
-      if (!stId) {
-        const { data: idData } = await supabase.rpc('get_current_student_id')
-        stId = idData
-      }
-
-      if (stId) {
-        const { data: progData } = await supabase
-          .from('progress')
-          .select('attempts, quiz_score, status')
-          .eq('student_id', stId)
-          .eq('subcourse_id', subcourseId)
-          .maybeSingle()
-
-        if (progData) {
-          setSubcourseProgress(progData)
-        }
-      }
     } catch (err: unknown) {
       const e = err as Error
       setErrorMessage(e.message || 'Gagal memuat kuis sub-materi.')
     } finally {
       setLoadingQuiz(false)
     }
-  }, [subcourseId, subCourseTitle, studentProfile?.id])
+  }, [subcourseId, subCourseTitle])
 
   useEffect(() => {
     if (currentType === 'quiz') {
@@ -272,17 +335,67 @@ export default function StudentActivityPlayerPage() {
     }
   }, [currentType, fetchSubCourseQuizData])
 
+  // Navigation helpers with Gating Enforcement
+  const isSubcourseCompleted = subcourseProgress?.status === 'completed'
+
+  const goToActivity = async (type: SupportedActivityType) => {
+    const gating = canAccessActivity(completedActivities, type, isSubcourseCompleted)
+    if (!gating.allowed) {
+      setGatingAlert(gating.reason || 'Aktivitas ini masih terkunci.')
+      return
+    }
+
+    setGatingAlert(null)
+    setCurrentType(type)
+    navigate(`/learn/${subcourseId}/${type}`)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Advancing to Next Activity with Completion Tracking
+  const handleNext = async () => {
+    const stId = await getStudentId()
+
+    // 1. Mark current activity as completed upon moving forward
+    if (stId && subcourseId) {
+      if (currentType === 'text') {
+        const updated = await markActivityCompleted(stId, subcourseId, 'text', supabase)
+        setCompletedActivities(updated)
+      } else if (currentType === 'video') {
+        const updated = await markActivityCompleted(stId, subcourseId, 'video', supabase)
+        setCompletedActivities(updated)
+      }
+    }
+
+    const currentStepIndex = STEP_DEFINITIONS.findIndex((s) => s.type === currentType)
+    if (currentStepIndex < STEP_DEFINITIONS.length - 1) {
+      const nextStep = STEP_DEFINITIONS[currentStepIndex + 1].type
+      goToActivity(nextStep)
+    }
+  }
+
+  const handlePrev = () => {
+    const currentStepIndex = STEP_DEFINITIONS.findIndex((s) => s.type === currentType)
+    if (currentStepIndex > 0) {
+      const prevStep = STEP_DEFINITIONS[currentStepIndex - 1].type
+      goToActivity(prevStep)
+    }
+  }
+
+  // Handle Block Sequencer Success
+  const handleBlockSuccess = async (actType: 'ia1' | 'ia2') => {
+    const stId = await getStudentId()
+    if (stId && subcourseId) {
+      const updated = await markActivityCompleted(stId, subcourseId, actType, supabase)
+      setCompletedActivities(updated)
+    }
+  }
+
   // Handle SubCourse Quiz Submission
   const handleSubCourseQuizComplete = async (res: QuizResult) => {
     if (!supabase || !subcourseId) return
 
     try {
-      let stId = studentProfile?.id
-      if (!stId) {
-        const { data: idData } = await supabase.rpc('get_current_student_id')
-        stId = idData
-      }
-
+      const stId = await getStudentId()
       if (!stId) {
         console.warn('Student ID not found, unable to write progress to DB')
         return
@@ -291,6 +404,13 @@ export default function StudentActivityPlayerPage() {
       const nextAttempts = (subcourseProgress?.attempts || 0) + 1
       const nextStatus = res.passed ? 'completed' : 'in_progress'
 
+      // If passed, mark quiz and all activities completed
+      let updatedActs = completedActivities
+      if (res.passed) {
+        updatedActs = await markActivityCompleted(stId, subcourseId, 'quiz', supabase)
+        setCompletedActivities(['text', 'video', 'ia1', 'ia2', 'quiz'])
+      }
+
       const { error: saveErr } = await supabase.from('progress').upsert(
         {
           student_id: stId,
@@ -298,6 +418,9 @@ export default function StudentActivityPlayerPage() {
           status: nextStatus,
           quiz_score: res.score,
           attempts: nextAttempts,
+          completed_activities: res.passed
+            ? ['text', 'video', 'ia1', 'ia2', 'quiz']
+            : updatedActs,
           cooldown_until: null,
           updated_at: new Date().toISOString()
         },
@@ -318,28 +441,7 @@ export default function StudentActivityPlayerPage() {
     }
   }
 
-  // Navigation helpers
   const currentStepIndex = STEP_DEFINITIONS.findIndex((s) => s.type === currentType)
-
-  const goToActivity = (type: SupportedActivityType) => {
-    setCurrentType(type)
-    navigate(`/learn/${subcourseId}/${type}`, { replace: true })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const handleNext = () => {
-    if (currentStepIndex < STEP_DEFINITIONS.length - 1) {
-      goToActivity(STEP_DEFINITIONS[currentStepIndex + 1].type)
-    }
-  }
-
-  const handlePrev = () => {
-    if (currentStepIndex > 0) {
-      goToActivity(STEP_DEFINITIONS[currentStepIndex - 1].type)
-    }
-  }
-
-  // Current activity record
   const activeActivity = activities.find((a) => a.type === currentType)
 
   if (loading) {
@@ -348,7 +450,7 @@ export default function StudentActivityPlayerPage() {
         <div className="card-brutal bg-white p-8 text-center space-y-4 shadow-brutal max-w-sm w-full">
           <Sparkles className="w-10 h-10 animate-spin mx-auto text-retro-yellow" />
           <h2 className="text-base font-black tracking-tight">Memuat Ruang Belajar Siswa...</h2>
-          <p className="text-xs text-neutral-600 font-medium">Menyiapkan alur aktivitas belajar.</p>
+          <p className="text-xs text-neutral-600 font-medium">Memeriksa hak akses dan progress belajar.</p>
         </div>
       </div>
     )
@@ -388,10 +490,10 @@ export default function StudentActivityPlayerPage() {
 
           {/* Current Step Counter Badge */}
           <div className="flex items-center gap-2 shrink-0">
-            {subcourseProgress?.status === 'completed' && (
+            {isSubcourseCompleted && (
               <span className="badge-brutal text-xs bg-retro-green text-black font-mono font-black hidden sm:inline-flex items-center gap-1">
                 <Award className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Lulus ({subcourseProgress.quiz_score}%)</span>
+                <span>Lulus ({subcourseProgress?.quiz_score}%)</span>
               </span>
             )}
             <span className="badge-brutal text-xs bg-black text-white font-mono font-black">
@@ -400,11 +502,14 @@ export default function StudentActivityPlayerPage() {
           </div>
         </div>
 
-        {/* Stepper Navigation Bar */}
+        {/* Stepper Navigation Bar with Gating & Locking Visuals */}
         <div className="border-t-2 border-black bg-[#FAF7EE] overflow-x-auto py-2 px-4">
           <div className="max-w-6xl mx-auto flex items-center justify-center sm:justify-start gap-2 min-w-max">
             {STEP_DEFINITIONS.map((step, idx) => {
               const isActive = step.type === currentType
+              const stepGating = canAccessActivity(completedActivities, step.type, isSubcourseCompleted)
+              const isLocked = !stepGating.allowed
+              const isDone = completedActivities.includes(step.type) || isSubcourseCompleted
               const IconComp = step.icon
 
               return (
@@ -414,18 +519,34 @@ export default function StudentActivityPlayerPage() {
                   className={`flex items-center gap-2 py-1.5 px-3 rounded-xl text-xs font-black transition ${
                     isActive
                       ? 'bg-black text-white border-2 border-black shadow-brutal-sm scale-105'
-                      : 'bg-white text-neutral-700 hover:text-black hover:bg-neutral-100 border-2 border-black/30'
+                      : isLocked
+                      ? 'bg-neutral-100 text-neutral-400 border-2 border-black/20 opacity-60 cursor-not-allowed'
+                      : 'bg-white text-neutral-700 hover:text-black hover:bg-neutral-100 border-2 border-black/40'
                   }`}
+                  title={isLocked ? stepGating.reason : `Buka ${step.label}`}
                 >
                   <div
                     className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-mono font-black ${
-                      isActive ? 'bg-retro-yellow text-black' : 'bg-neutral-100 text-black'
+                      isActive
+                        ? 'bg-retro-yellow text-black'
+                        : isDone
+                        ? 'bg-retro-green text-black'
+                        : isLocked
+                        ? 'bg-neutral-200 text-neutral-500'
+                        : 'bg-neutral-100 text-black'
                     }`}
                   >
-                    {idx + 1}
+                    {isDone && !isActive ? (
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    ) : isLocked ? (
+                      <Lock className="w-3 h-3 text-neutral-600" />
+                    ) : (
+                      idx + 1
+                    )}
                   </div>
                   <IconComp className="w-3.5 h-3.5" />
                   <span>{step.shortLabel}</span>
+                  {isLocked && <Lock className="w-3 h-3 text-neutral-400 ml-0.5" />}
                 </button>
               )
             })}
@@ -435,6 +556,22 @@ export default function StudentActivityPlayerPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Progression & Gating Alert Banner */}
+        {gatingAlert && (
+          <div className="card-brutal bg-retro-pink text-white p-4 font-bold text-xs shadow-brutal flex items-center justify-between gap-3 animate-pulse">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 shrink-0 stroke-[2.5]" />
+              <span className="text-xs">{gatingAlert}</span>
+            </div>
+            <button
+              onClick={() => setGatingAlert(null)}
+              className="underline text-xs shrink-0 hover:text-retro-yellow"
+            >
+              Mengerti
+            </button>
+          </div>
+        )}
+
         {errorMessage && (
           <div className="card-brutal bg-retro-pink p-4 text-white text-xs font-bold shadow-brutal flex items-center justify-between gap-3">
             <span>{errorMessage}</span>
@@ -481,6 +618,7 @@ export default function StudentActivityPlayerPage() {
                   'Urutkan Blok Pembuatan Variabel'
                 }
                 blocks={iaBlocks}
+                onSuccess={() => handleBlockSuccess('ia1')}
                 onNextActivity={handleNext}
               />
             )}
@@ -504,9 +642,8 @@ export default function StudentActivityPlayerPage() {
                   'Tantangan Balok: Nilai Variabel & Perhitungan'
                 }
                 blocks={iaBlocks}
-                onNextActivity={() => {
-                  goToActivity('quiz')
-                }}
+                onSuccess={() => handleBlockSuccess('ia2')}
+                onNextActivity={() => goToActivity('quiz')}
               />
             )}
           </div>
@@ -566,15 +703,15 @@ export default function StudentActivityPlayerPage() {
           {currentStepIndex < STEP_DEFINITIONS.length - 1 ? (
             <button
               onClick={handleNext}
-              className="btn-brutal-yellow text-xs py-2 px-4 inline-flex items-center gap-1.5"
+              className="btn-brutal-yellow text-xs py-2 px-4 inline-flex items-center gap-1.5 font-black"
             >
-              <span>Selanjutnya</span>
+              <span>Selesai & Lanjut</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           ) : (
             <Link
               to="/dashboard"
-              className="btn-brutal-green text-xs py-2 px-4 inline-flex items-center gap-1.5"
+              className="btn-brutal-green text-xs py-2 px-4 inline-flex items-center gap-1.5 font-black"
             >
               <span>Selesai & Dashboard</span>
               <ArrowRight className="w-4 h-4" />

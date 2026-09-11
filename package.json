@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:rls": "node scripts/verify-rls.mjs",
     "test:auth": "node scripts/verify-auth-flows.mjs",
-    "test:cms": "node scripts/verify-cms-flows.mjs"
+    "test:cms": "node scripts/verify-cms-flows.mjs",
+    "test:player": "node scripts/verify-student-player-flows.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

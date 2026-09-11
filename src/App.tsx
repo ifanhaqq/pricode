@@ -4,6 +4,7 @@ import { AdminRoute, StudentRoute } from './components/RouteGuards'
 
 import LoginPage from './pages/LoginPage'
 import StudentDashboardPage from './pages/student/StudentDashboardPage'
+import StudentActivityPlayerPage from './pages/student/StudentActivityPlayerPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import StudentManagementPage from './pages/admin/StudentManagementPage'
 import CourseListPage from './pages/admin/CourseListPage'
@@ -26,6 +27,8 @@ export default function App() {
           {/* Student Protected Routes */}
           <Route element={<StudentRoute />}>
             <Route path="/dashboard" element={<StudentDashboardPage />} />
+            <Route path="/learn/:subcourseId" element={<StudentActivityPlayerPage />} />
+            <Route path="/learn/:subcourseId/:activityType" element={<StudentActivityPlayerPage />} />
           </Route>
 
           {/* Admin Protected Routes */}

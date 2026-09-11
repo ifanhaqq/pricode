@@ -164,24 +164,33 @@ export default function StudentDashboardPage() {
         // Try Supabase first
         if (stId) {
           try {
-            const { data: dbCProg } = await supabase
+            const { data: dbCProg, error: dbErr } = await supabase
               .from('progress')
               .select('status, quiz_score, cooldown_until, weakest_subcourse_id')
               .eq('student_id', stId)
               .eq('course_id', c.id)
               .maybeSingle()
 
-            if (dbCProg) {
-              progRow = dbCProg
+            if (!dbErr) {
+              if (dbCProg) {
+                progRow = dbCProg
+              } else {
+                // Progress absent in DB: clear obsolete localStorage cache
+                try {
+                  localStorage.removeItem(`pricode_progress_${stId}_course_${c.id}`)
+                } catch {
+                  // ignore
+                }
+              }
             }
           } catch {
             // Course progress column might not exist yet
           }
         }
 
-        // Fallback to localStorage
-        if (!progRow) {
-          const cacheKey = `pricode_progress_${stId || 'guest'}_course_${c.id}`
+        // Fallback to localStorage (only if stId wasn't checked or query failed)
+        if (!progRow && !stId) {
+          const cacheKey = `pricode_progress_guest_course_${c.id}`
           const cached = localStorage.getItem(cacheKey)
           if (cached) {
             try {

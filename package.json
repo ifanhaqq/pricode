@@ -13,7 +13,9 @@
     "test:player": "node scripts/verify-student-player-flows.mjs",
     "test:quiz": "node scripts/verify-quiz-engine.mjs",
     "test:gating": "node scripts/verify-progression-gating.mjs",
-    "test:instructor": "node scripts/verify-instructor-dashboard.mjs"
+    "test:instructor": "node scripts/verify-instructor-dashboard.mjs",
+    "test:reset": "node scripts/verify-reset-progress.mjs",
+    "reset:progress": "node scripts/reset-student-progress.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

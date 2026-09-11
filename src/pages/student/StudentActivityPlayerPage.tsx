@@ -218,6 +218,9 @@ export default function StudentActivityPlayerPage() {
         if (progData) {
           setSubcourseProgress(progData)
           isCompleted = progData.status === 'completed'
+        } else {
+          setSubcourseProgress(null)
+          isCompleted = false
         }
 
         const acts = await fetchCompletedActivities(stId, subcourseId, isCompleted, supabase)

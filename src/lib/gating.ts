@@ -159,10 +159,48 @@ export function canAccessCourse(
 }
 
 /**
- * 5. Persistence Helpers: Read and save activity completion state
+ * 5. Persistence & Cache Helpers: Read, save, and reset activity completion state
  */
 export function getActivityStorageKey(studentId: string, subcourseId: string): string {
   return `pricode_acts_${studentId}_${subcourseId}`
+}
+
+/**
+ * Purge all student progress and activity cache from browser localStorage.
+ */
+export function clearAllProgressLocalStorage(): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && (key.startsWith('pricode_acts_') || key.startsWith('pricode_progress_') || key.startsWith('pricode_quiz_'))) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Purge progress and activity cache for a specific student from browser localStorage.
+ */
+export function clearStudentProgressLocalStorage(studentId: string): void {
+  if (typeof localStorage === 'undefined' || !studentId) return
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && (key.includes(`_${studentId}_`) || key.endsWith(`_${studentId}`))) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    // ignore
+  }
 }
 
 export async function fetchCompletedActivities(
@@ -199,13 +237,26 @@ export async function fetchCompletedActivities(
         .eq('subcourse_id', subcourseId)
         .maybeSingle()
 
-      if (!error && data) {
+      if (!error) {
+        if (!data) {
+          // If no progress record exists in DB (e.g. after reset or before start),
+          // clear any stale localStorage cache and return empty array
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(getActivityStorageKey(studentId, subcourseId))
+          }
+          return []
+        }
+
         if (data.status === 'completed') {
           return ['text', 'video', 'ia1', 'ia2', 'quiz']
         }
-        if (Array.isArray(data.completed_activities) && data.completed_activities.length > 0) {
-          // Merge unique
-          acts = Array.from(new Set([...acts, ...data.completed_activities]))
+
+        if (Array.isArray(data.completed_activities)) {
+          acts = data.completed_activities
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(getActivityStorageKey(studentId, subcourseId), JSON.stringify(acts))
+          }
+          return acts
         }
       }
     } catch {

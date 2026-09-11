@@ -83,25 +83,21 @@ export default function FinalQuizPlayerPage() {
         const courseProgMap: Record<string, { status?: string }> = {}
         for (const c of allCourses) {
           try {
-            const { data: cp } = await supabase
+            const { data: cp, error: cpErr } = await supabase
               .from('progress')
               .select('status')
               .eq('student_id', stId)
               .eq('course_id', c.id)
               .maybeSingle()
-            if (cp) courseProgMap[c.id] = { status: cp.status }
-          } catch {
-            // column course_id might not exist yet
-          }
-          if (!courseProgMap[c.id]) {
-            const cached = localStorage.getItem(`pricode_progress_${stId}_course_${c.id}`)
-            if (cached) {
-              try {
-                courseProgMap[c.id] = { status: JSON.parse(cached).status }
-              } catch {
-                // ignore
+            if (!cpErr) {
+              if (cp) {
+                courseProgMap[c.id] = { status: cp.status }
+              } else {
+                localStorage.removeItem(`pricode_progress_${stId}_course_${c.id}`)
               }
             }
+          } catch {
+            // column course_id might not exist yet
           }
         }
 
@@ -205,16 +201,24 @@ export default function FinalQuizPlayerPage() {
             .eq('course_id', courseId)
             .maybeSingle()
 
-          if (!progErr && dbProg) {
-            loadedProgress = dbProg as CourseProgress
+          if (!progErr) {
+            if (dbProg) {
+              loadedProgress = dbProg as CourseProgress
+            } else {
+              try {
+                localStorage.removeItem(localStorageKey)
+              } catch {
+                // ignore
+              }
+            }
           }
         } catch {
           // Column course_id might not exist yet if migration pending
         }
       }
 
-      // Fallback / sync with localStorage
-      if (!loadedProgress) {
+      // Fallback only if stId wasn't checked
+      if (!loadedProgress && !stId) {
         const cached = localStorage.getItem(localStorageKey)
         if (cached) {
           try {

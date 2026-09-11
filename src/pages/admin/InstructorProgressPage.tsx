@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
+  clearAllProgressLocalStorage,
+  clearStudentProgressLocalStorage
+} from '../../lib/gating'
+import {
   GraduationCap,
   Search,
   CheckCircle2,
@@ -11,7 +15,10 @@ import {
   Award,
   BookOpen,
   Filter,
-  Users
+  Users,
+  Trash2,
+  AlertTriangle,
+  X
 } from 'lucide-react'
 
 interface StudentItem {
@@ -55,6 +62,14 @@ export default function InstructorProgressPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [resetting, setResetting] = useState(false)
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean
+    type: 'all' | 'single'
+    studentId?: string
+    studentName?: string
+  } | null>(null)
 
   // Fetch all students and their progress via Admin RLS
   const loadInstructorData = useCallback(async () => {
@@ -113,6 +128,70 @@ export default function InstructorProgressPage() {
   useEffect(() => {
     loadInstructorData()
   }, [loadInstructorData])
+
+  // Reset all student progress across the entire system
+  const handleResetAllProgress = async () => {
+    if (!supabase) return
+    setResetting(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
+
+    try {
+      // 1. Delete all rows from progress table via Admin RLS
+      const { error: delErr } = await supabase
+        .from('progress')
+        .delete()
+        .neq('student_id', '00000000-0000-0000-0000-000000000000')
+
+      if (delErr) throw delErr
+
+      // 2. Clear local storage cache
+      clearAllProgressLocalStorage()
+
+      // 3. Reload dashboard state
+      await loadInstructorData()
+
+      setSuccessMessage('Berhasil mereset seluruh progres siswa ke 0! Semua materi dan kuis kini kembali ke status awal.')
+      setConfirmModal(null)
+    } catch (err: unknown) {
+      const e = err as Error
+      setErrorMessage(e.message || 'Gagal mereset seluruh progres siswa.')
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  // Reset a specific student's progress
+  const handleResetStudentProgress = async (studentId: string, studentName: string) => {
+    if (!supabase || !studentId) return
+    setResetting(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
+
+    try {
+      // 1. Delete progress for this specific student via Admin RLS
+      const { error: delErr } = await supabase
+        .from('progress')
+        .delete()
+        .eq('student_id', studentId)
+
+      if (delErr) throw delErr
+
+      // 2. Clear local storage cache for this student
+      clearStudentProgressLocalStorage(studentId)
+
+      // 3. Reload dashboard state
+      await loadInstructorData()
+
+      setSuccessMessage(`Berhasil mereset progres belajar siswa "${studentName}" ke status awal (0%).`)
+      setConfirmModal(null)
+    } catch (err: unknown) {
+      const e = err as Error
+      setErrorMessage(e.message || `Gagal mereset progres siswa ${studentName}.`)
+    } finally {
+      setResetting(false)
+    }
+  }
 
   // Subcourses of selected course
   const currentSubcourses = useMemo(() => {
@@ -196,13 +275,25 @@ export default function InstructorProgressPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => loadInstructorData()}
-            className="btn-brutal-white text-xs py-2 px-4 inline-flex items-center gap-2 self-start sm:self-auto font-black"
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span>Segarkan Data</span>
-          </button>
+          <div className="flex items-center gap-3 self-start sm:self-auto flex-wrap">
+            <button
+              onClick={() => setConfirmModal({ open: true, type: 'all' })}
+              disabled={resetting || loading}
+              className="btn-brutal bg-retro-pink text-white hover:bg-rose-600 text-xs py-2 px-4 inline-flex items-center gap-2 font-black shadow-brutal-sm transition"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Reset Semua Progres</span>
+            </button>
+
+            <button
+              onClick={() => loadInstructorData()}
+              disabled={resetting || loading}
+              className="btn-brutal-white text-xs py-2 px-4 inline-flex items-center gap-2 font-black"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Segarkan Data</span>
+            </button>
+          </div>
         </div>
 
         {/* Summary Metric Cards */}
@@ -277,6 +368,22 @@ export default function InstructorProgressPage() {
         </div>
       </div>
 
+      {/* Success Alert */}
+      {successMessage && (
+        <div className="card-brutal bg-retro-green text-black p-4 font-bold text-xs shadow-brutal flex items-center justify-between gap-2 border-2 border-black">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 stroke-[2.5]" />
+            <span>{successMessage}</span>
+          </div>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="hover:opacity-75 p-1 font-black cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Error Alert */}
       {errorMessage && (
         <div className="card-brutal bg-retro-pink text-white p-4 font-bold text-xs shadow-brutal flex items-center gap-2">
@@ -333,6 +440,14 @@ export default function InstructorProgressPage() {
                     <div>Kuis Akhir Kursus</div>
                     <span className="text-[10px] text-retro-pink font-normal">
                       Evaluasi Kelulusan
+                    </span>
+                  </th>
+
+                  {/* Action Column */}
+                  <th className="py-3 px-4 uppercase tracking-wider font-black w-28 text-center border-l-2 border-neutral-700 bg-neutral-900">
+                    <div>Aksi</div>
+                    <span className="text-[10px] text-neutral-400 font-normal">
+                      Reset
                     </span>
                   </th>
                 </tr>
@@ -445,6 +560,27 @@ export default function InstructorProgressPage() {
                           </span>
                         )}
                       </td>
+
+                      {/* Action Column */}
+                      <td className="py-3.5 px-4 border-l-2 border-black/10 text-center">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmModal({
+                              open: true,
+                              type: 'single',
+                              studentId: student.id,
+                              studentName: student.name
+                            })
+                          }
+                          disabled={resetting}
+                          title={`Reset progres belajar untuk ${student.name}`}
+                          className="px-2.5 py-1.5 rounded-lg border-2 border-black bg-white hover:bg-retro-pink hover:text-white transition shadow-brutal-xs inline-flex items-center gap-1.5 text-black font-mono text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset</span>
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -453,6 +589,72 @@ export default function InstructorProgressPage() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      {confirmModal?.open && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs animate-in fade-in">
+          <div className="card-brutal bg-white p-6 max-w-md w-full border-4 border-black shadow-brutal-lg space-y-5">
+            <div className="flex items-start gap-3.5 border-b-2 border-black pb-4">
+              <div className="w-10 h-10 rounded-xl bg-retro-pink text-white border-2 border-black flex items-center justify-center font-black shadow-brutal-xs shrink-0">
+                <AlertTriangle className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-black">
+                  {confirmModal.type === 'all'
+                    ? 'Reset Seluruh Progres Siswa?'
+                    : `Reset Progres: ${confirmModal.studentName}?`}
+                </h3>
+                <p className="text-xs text-neutral-600 font-medium leading-relaxed">
+                  {confirmModal.type === 'all'
+                    ? 'Tindakan ini akan menghapus SELURUH catatan progres materi, aktivitas balok/video, riwayat kuis, dan cooldown dari SEMUA siswa. Seluruh siswa akan memulai kembali dari materi pertama (0%).'
+                    : `Tindakan ini akan menghapus seluruh catatan progres materi dan skor kuis untuk siswa "${confirmModal.studentName}". Siswa ini akan memulai kembali dari materi pertama (0%).`}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border-2 border-amber-400 text-amber-950 p-3 rounded-lg text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-700" />
+              <span>Perhatian: Aksi ini bersifat permanen dan tidak dapat dibatalkan.</span>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                disabled={resetting}
+                className="btn-brutal-white py-2 px-4 text-xs font-black cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmModal.type === 'all') {
+                    handleResetAllProgress()
+                  } else if (confirmModal.studentId && confirmModal.studentName) {
+                    handleResetStudentProgress(confirmModal.studentId, confirmModal.studentName)
+                  }
+                }}
+                disabled={resetting}
+                className="btn-brutal bg-retro-pink text-white hover:bg-rose-600 py-2 px-4 text-xs font-black inline-flex items-center gap-2 shadow-brutal-sm cursor-pointer disabled:opacity-50"
+              >
+                {resetting ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-spin" />
+                    <span>Mereset...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Ya, Reset Sekarang</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

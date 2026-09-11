@@ -2,7 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+@layer base {
+  body {
+    background-color: #FAF7EE;
+    color: #121212;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, kbd {
+    font-family: 'JetBrains Mono', monospace;
+  }
 }
 
+@layer components {
+  /* Neo-Brutalist Buttons */
+  .btn-brutal {
+    @apply border-2 border-black font-bold text-sm tracking-tight px-4 py-2.5 rounded-lg shadow-brutal transition-all flex items-center justify-center gap-2 cursor-pointer select-none active:translate-x-1 active:translate-y-1 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-x-0 disabled:active:translate-y-0 disabled:active:shadow-brutal;
+  }
+
+  .btn-brutal-yellow {
+    @apply btn-brutal bg-retro-yellow hover:bg-retro-yellow-hover text-black;
+  }
+
+  .btn-brutal-green {
+    @apply btn-brutal bg-retro-green hover:bg-[#00B975] text-black;
+  }
+
+  .btn-brutal-pink {
+    @apply btn-brutal bg-retro-pink hover:bg-[#F2448B] text-white;
+  }
+
+  .btn-brutal-white {
+    @apply btn-brutal bg-white hover:bg-slate-100 text-black;
+  }
+
+  .btn-brutal-black {
+    @apply btn-brutal bg-black hover:bg-neutral-800 text-white shadow-[4px_4px_0px_#E8F929];
+  }
+
+  /* Neo-Brutalist Cards */
+  .card-brutal {
+    @apply border-2 border-black rounded-xl bg-white shadow-brutal transition-all;
+  }
+
+  .card-brutal-hover {
+    @apply card-brutal hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-lg;
+  }
+
+  /* Neo-Brutalist Inputs */
+  .input-brutal {
+    @apply w-full border-2 border-black rounded-lg bg-white px-3.5 py-2.5 text-sm text-black placeholder-neutral-500 font-medium shadow-[2px_2px_0px_#000] focus:outline-none focus:bg-[#FFFDE6] focus:shadow-[4px_4px_0px_#000] transition-all;
+  }
+
+  /* Neo-Brutalist Badges */
+  .badge-brutal {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 border border-black rounded-md text-xs font-bold shadow-[2px_2px_0px_#000];
+  }
+}

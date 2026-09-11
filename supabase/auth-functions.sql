@@ -184,3 +184,4 @@ $$;
 -- Grant execution to authenticated users (internal is_admin() checks prevent unauthorized execution)
 grant execute on function public.admin_create_student(text, text, text) to authenticated;
 grant execute on function public.admin_reset_student_password(uuid, text) to authenticated;
+

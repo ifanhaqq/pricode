@@ -12,7 +12,8 @@
     "test:cms": "node scripts/verify-cms-flows.mjs",
     "test:player": "node scripts/verify-student-player-flows.mjs",
     "test:quiz": "node scripts/verify-quiz-engine.mjs",
-    "test:gating": "node scripts/verify-progression-gating.mjs"
+    "test:gating": "node scripts/verify-progression-gating.mjs",
+    "test:instructor": "node scripts/verify-instructor-dashboard.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

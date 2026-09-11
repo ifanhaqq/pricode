@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { Code2, Users, Shield, LogOut, BookOpen, Activity } from 'lucide-react'
+import { Code2, Users, Shield, LogOut, BookOpen, Activity, GraduationCap } from 'lucide-react'
 
 export default function AdminLayout() {
   const { user, logout } = useAuth()
@@ -63,6 +63,20 @@ export default function AdminLayout() {
               </NavLink>
 
               <NavLink
+                to="/admin/progress"
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-black transition ${
+                    isActive
+                      ? 'bg-retro-yellow text-black border-2 border-black shadow-brutal-sm'
+                      : 'text-neutral-700 hover:text-black hover:bg-neutral-100 border-2 border-transparent'
+                  }`
+                }
+              >
+                <GraduationCap className="w-4 h-4" />
+                <span>Progress Siswa</span>
+              </NavLink>
+
+              <NavLink
                 to="/infra-test"
                 className={({ isActive }) =>
                   `flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-black transition ${
@@ -119,6 +133,17 @@ export default function AdminLayout() {
           >
             <Users className="w-3.5 h-3.5" />
             <span>Siswa</span>
+          </NavLink>
+          <NavLink
+            to="/admin/progress"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 px-3 py-1 rounded text-xs font-black ${
+                isActive ? 'bg-retro-yellow text-black border-2 border-black' : 'text-neutral-600'
+              }`
+            }
+          >
+            <GraduationCap className="w-3.5 h-3.5" />
+            <span>Progress</span>
           </NavLink>
           <NavLink
             to="/infra-test"

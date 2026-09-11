@@ -8,6 +8,7 @@ import StudentActivityPlayerPage from './pages/student/StudentActivityPlayerPage
 import FinalQuizPlayerPage from './pages/student/FinalQuizPlayerPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import StudentManagementPage from './pages/admin/StudentManagementPage'
+import InstructorProgressPage from './pages/admin/InstructorProgressPage'
 import CourseListPage from './pages/admin/CourseListPage'
 import CourseDetailPage from './pages/admin/CourseDetailPage'
 import TextActivityEditor from './pages/admin/editors/TextActivityEditor'
@@ -64,6 +65,9 @@ export default function App() {
 
               {/* Student Management */}
               <Route path="students" element={<StudentManagementPage />} />
+
+              {/* Instructor Progress Dashboard */}
+              <Route path="progress" element={<InstructorProgressPage />} />
             </Route>
           </Route>
 

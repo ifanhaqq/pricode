@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, supabaseUrl, isSupabaseConfigured } from '../lib/supabase'
-import { CheckCircle2, XCircle, AlertCircle, RefreshCw, Database, Server, Globe, ArrowLeft } from 'lucide-react'
+import { CheckCircle2, XCircle, RefreshCw, Database, Server, Globe, ArrowLeft, Zap } from 'lucide-react'
 
 interface TestRow {
   id?: number | string
@@ -42,11 +42,11 @@ export default function InfraTestPage() {
         setData(rows[0] as TestRow)
       } else {
         setData(null)
-        setError(`Table "${tableName}" was reached, but returned 0 rows.`)
+        setError(`Tabel "${tableName}" berhasil dijangkau, namun belum memiliki data (0 baris).`)
       }
     } catch (err: unknown) {
       const e = err as { message?: string }
-      setError(e.message || 'Failed to query Supabase table.')
+      setError(e.message || 'Gagal melakukan query ke tabel Supabase.')
       setData(null)
     } finally {
       setLoading(false)
@@ -58,103 +58,167 @@ export default function InfraTestPage() {
   }, [testConnection])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 md:p-8">
-      <div className="w-full max-w-4xl space-y-6">
-        <header className="border-b border-slate-800 pb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <Link to="/login" className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-white mb-2">
-              <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Login
+    <div className="min-h-screen bg-[#FAF7EE] text-black flex flex-col items-center p-4 sm:p-6 md:p-8 font-sans">
+      <div className="w-full max-w-4xl space-y-6 pb-12">
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-black pb-5">
+          <div className="space-y-1">
+            <Link
+              to="/login"
+              className="btn-brutal-white text-xs py-1.5 px-3 inline-flex items-center gap-1.5 mb-2"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Kembali ke Login</span>
             </Link>
-            <h1 className="text-2xl font-bold tracking-tight text-white">Uji Infrastruktur Database</h1>
-            <p className="text-sm text-slate-400 mt-1">Status koneksi langsung ke Supabase</p>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-black flex items-center gap-3">
+              <Database className="w-8 h-8 text-retro-yellow" />
+              Uji Infrastruktur Database
+            </h1>
+            <p className="text-xs text-neutral-700 font-medium">
+              Verifikasi status koneksi real-time, latensi jaringan, dan pembacaan tabel Supabase.
+            </p>
           </div>
 
           <button
             onClick={testConnection}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition disabled:opacity-50"
+            className="btn-brutal-yellow text-xs py-2.5 px-4 inline-flex items-center gap-2 self-start sm:self-auto"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Uji Ulang
+            <span>Uji Ulang Koneksi</span>
           </button>
-        </header>
+        </div>
 
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
-            <Globe className="w-5 h-5 text-sky-400 mt-0.5" />
+        {/* Status Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="card-brutal bg-white p-5 flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-retro-yellow border-2 border-black flex items-center justify-center flex-shrink-0 shadow-brutal-sm">
+              <Globe className="w-5 h-5 text-black" />
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Build & Host</p>
-              <p className="text-sm font-medium text-white mt-1">Vite + GitHub Pages</p>
-              <p className="text-xs text-slate-500 mt-0.5">Mode: {import.meta.env.MODE}</p>
+              <p className="text-[10px] uppercase tracking-wider font-black text-neutral-500 font-mono">
+                Build & Host
+              </p>
+              <p className="text-sm font-black text-black mt-0.5">Vite + GitHub Pages</p>
+              <p className="text-[11px] font-mono text-neutral-600">Mode: {import.meta.env.MODE}</p>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
-            <Server className="w-5 h-5 text-indigo-400 mt-0.5" />
+          <div className="card-brutal bg-white p-5 flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-retro-green border-2 border-black flex items-center justify-center flex-shrink-0 shadow-brutal-sm">
+              <Server className="w-5 h-5 text-black" />
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Environment</p>
-              <p className="text-sm font-medium text-white mt-1">
+              <p className="text-[10px] uppercase tracking-wider font-black text-neutral-500 font-mono">
+                Status Supabase
+              </p>
+              <p className="text-sm font-black text-black mt-0.5">
                 {isSupabaseConfigured ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Terkonfigurasi
+                  <span className="text-black flex items-center gap-1 font-black">
+                    <CheckCircle2 className="w-4 h-4 text-retro-green stroke-[3]" /> Terkonfigurasi
                   </span>
                 ) : (
-                  <span className="text-rose-400 flex items-center gap-1">
-                    <XCircle className="w-4 h-4" /> Belum Ada Kunci
+                  <span className="text-rose-600 flex items-center gap-1 font-black">
+                    <XCircle className="w-4 h-4" /> Belum Konfigurasi
                   </span>
                 )}
               </p>
-              <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[200px]">{supabaseUrl}</p>
+              <p className="text-[11px] font-mono text-neutral-600 truncate max-w-[180px]">
+                {supabaseUrl || 'URL Tidak Ditemukan'}
+              </p>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
-            <Database className="w-5 h-5 text-emerald-400 mt-0.5" />
+          <div className="card-brutal bg-white p-5 flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-retro-lavender border-2 border-black flex items-center justify-center flex-shrink-0 shadow-brutal-sm">
+              <Zap className="w-5 h-5 text-black" />
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Database Query</p>
-              <p className="text-sm font-medium mt-1">
-                {loading ? (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Querying...
-                  </span>
-                ) : data ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Terhubung
-                  </span>
-                ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <AlertCircle className="w-4 h-4" /> Perlu Perhatian
-                  </span>
-                )}
+              <p className="text-[10px] uppercase tracking-wider font-black text-neutral-500 font-mono">
+                Latensi Jaringan
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">{latency !== null ? `${latency}ms` : '-'}</p>
+              <p className="text-sm font-black text-black mt-0.5 font-mono">
+                {latency !== null ? `${latency} ms` : '-'}
+              </p>
+              <p className="text-[11px] text-neutral-600 font-medium">
+                {latency !== null && latency < 300 ? '⚡ Sangat Cepat' : 'Koneksi Stabil'}
+              </p>
             </div>
           </div>
-        </section>
+        </div>
 
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h2 className="text-sm font-semibold text-white">Target Tabel</h2>
-            <input
-              type="text"
-              value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-white font-mono"
-            />
+        {/* Table Selector & Query Panel */}
+        <div className="card-brutal bg-white p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-black pb-4">
+            <div>
+              <h2 className="text-lg font-black text-black flex items-center gap-2">
+                <span>Uji Query Tabel Database</span>
+              </h2>
+              <p className="text-xs text-neutral-600 mt-0.5">
+                Pilih tabel untuk memverifikasi kebijakan Row Level Security dan struktur data.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-black uppercase text-neutral-700">Tabel:</label>
+              <select
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+                className="input-brutal py-1.5 px-3 text-xs font-mono font-bold bg-retro-yellow/20"
+              >
+                <option value="courses">courses</option>
+                <option value="sub_courses">sub_courses</option>
+                <option value="activities">activities</option>
+                <option value="ia_blocks">ia_blocks</option>
+                <option value="sub_course_quizzes">sub_course_quizzes</option>
+                <option value="final_quizzes">final_quizzes</option>
+                <option value="questions">questions</option>
+                <option value="students">students</option>
+              </select>
+            </div>
           </div>
 
-          {data && (
-            <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs overflow-x-auto">
-              <pre className="text-slate-200">{JSON.stringify(data, null, 2)}</pre>
+          {/* Results Box */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-black font-mono">
+                Respon Query (1 Baris Pertama):
+              </span>
+              {loading ? (
+                <span className="badge-brutal bg-retro-yellow text-black text-[10px] animate-pulse">
+                  Menghubungi Server...
+                </span>
+              ) : error ? (
+                <span className="badge-brutal bg-retro-pink text-white text-[10px]">
+                  Ada Masalah
+                </span>
+              ) : (
+                <span className="badge-brutal bg-retro-green text-black text-[10px]">
+                  Koneksi Berhasil (200 OK)
+                </span>
+              )}
             </div>
-          )}
 
-          {error && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300">
-              {error}
-            </div>
-          )}
-        </section>
+            {error && (
+              <div className="card-brutal bg-retro-pink p-4 text-white text-xs font-bold flex items-start gap-2.5">
+                <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div className="leading-relaxed">{error}</div>
+              </div>
+            )}
+
+            {data && (
+              <div className="p-4 rounded-xl border-2 border-black bg-black text-retro-green font-mono text-xs overflow-x-auto shadow-brutal-sm">
+                <pre>{JSON.stringify(data, null, 2)}</pre>
+              </div>
+            )}
+
+            {!loading && !error && !data && (
+              <div className="p-8 text-center text-xs font-bold text-neutral-500 border-2 border-dashed border-black/30 rounded-xl">
+                Tidak ada data untuk ditampilkan.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

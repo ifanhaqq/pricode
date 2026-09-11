@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { Code2, BookOpen, Sparkles, LogOut, ShieldAlert, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Code2, BookOpen, LogOut, ShieldAlert, ArrowRight, CheckCircle2, User } from 'lucide-react'
 
 export default function StudentDashboardPage() {
   const { user, studentProfile, logout } = useAuth()
@@ -11,36 +11,38 @@ export default function StudentDashboardPage() {
     navigate('/login', { replace: true })
   }
 
-  const displayName = studentProfile?.name || 'Siswa'
+  const displayName = studentProfile?.name || 'Siswa Hebat'
   const displayUsername = studentProfile?.username || user?.email?.split('@')[0] || ''
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#FAF7EE] text-black flex flex-col font-sans">
       {/* Top Navbar */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-30">
+      <header className="border-b-2 border-black bg-white sticky top-0 z-30 shadow-brutal-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center font-bold">
-              <Code2 className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-retro-yellow text-black border-2 border-black shadow-brutal-sm flex items-center justify-center font-black">
+              <Code2 className="w-6 h-6 stroke-[2.5]" />
             </div>
-            <div>
-              <span className="font-bold text-white tracking-tight text-base">PRICODE</span>
-              <span className="ml-2 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                Siswa
+            <div className="flex items-center gap-2">
+              <span className="font-black text-black tracking-tight text-xl font-heading">
+                PRICODE
+              </span>
+              <span className="badge-brutal text-[10px] bg-retro-green text-black font-mono">
+                PORTAL SISWA
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-300 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-black bg-[#FAF7EE] border-2 border-black px-3 py-1.5 rounded-lg shadow-brutal-sm font-mono">
+              <User className="w-3.5 h-3.5 text-retro-pink" />
               <span>{displayName}</span>
-              <span className="text-slate-500 font-mono">(@{displayUsername})</span>
+              <span className="text-neutral-500 font-normal">(@{displayUsername})</span>
             </div>
 
             <button
               onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/20 transition"
+              className="btn-brutal-white text-xs py-1.5 px-3 inline-flex items-center gap-1.5 hover:bg-retro-pink hover:text-white transition"
               title="Keluar dari akun siswa"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -51,71 +53,91 @@ export default function StudentDashboardPage() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-12">
         {/* Welcome Hero */}
-        <div className="bg-gradient-to-br from-sky-900/30 via-slate-900 to-slate-900 border border-sky-500/20 rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-lg">
-          <div className="relative z-10 space-y-3 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-              <Sparkles className="w-3.5 h-3.5" />
-              Petualangan Coding Dimulai
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+        <div className="card-brutal bg-white p-6 sm:p-8 space-y-4 shadow-brutal-lg relative overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+            <span className="badge-brutal bg-retro-yellow text-black font-black">
+              KELAS 4–6 SD
+            </span>
+            <span className="badge-brutal bg-black text-white font-mono">
+              @{displayUsername}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight flex items-center gap-3">
               Halo, {displayName}! 👋
             </h1>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Kamu telah berhasil masuk dengan akun siswa <code className="bg-slate-950 px-2 py-0.5 rounded text-sky-300 font-mono font-bold">@{displayUsername}</code>. Semua materi dan aktivitas coding kamu siap dimulai!
+            <p className="text-sm text-neutral-700 font-medium leading-relaxed max-w-2xl">
+              Selamat datang di petualangan coding PRICODE! Di sini kamu akan belajar membuat game, animasi, dan memecahkan tantangan logika langkah demi langkah.
             </p>
           </div>
         </div>
 
-        {/* Course Card Preview */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
-                <BookOpen className="w-5 h-5" />
+        {/* Enrolled Course Card */}
+        <div className="card-brutal bg-white p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-black pb-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-retro-lavender border-2 border-black flex items-center justify-center shadow-brutal-sm flex-shrink-0">
+                <BookOpen className="w-6 h-6 text-black stroke-[2.5]" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-white">Logika Pemrograman</h2>
-                <p className="text-xs text-slate-400">Dasar logika coding untuk siswa SD</p>
+                <span className="badge-brutal text-[10px] bg-retro-green text-black mb-1 inline-block">
+                  KURSUS UTAMA
+                </span>
+                <h2 className="text-xl font-black text-black tracking-tight">
+                  Dasar Pemrograman PRICODE
+                </h2>
+                <p className="text-xs text-neutral-600 font-medium">
+                  Pengenalan konsep variabel, kondisi, perulangan, dan logika algoritma.
+                </p>
               </div>
             </div>
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Terdaftar
+
+            <span className="badge-brutal bg-retro-green text-black text-xs py-1.5 px-3 self-start sm:self-auto flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 stroke-[3]" />
+              <span>TERDAFTAR</span>
             </span>
           </div>
 
-          <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-slate-400 font-medium">Sub-Materi Pertama:</p>
-              <p className="text-sm font-semibold text-white">Variabel & Menyimpan Nilai</p>
+          <div className="bg-[#FAF7EE] border-2 border-black rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase text-neutral-500 font-mono">
+                  Materi Pertama:
+                </p>
+                <p className="text-base font-black text-black">
+                  Sub-Materi: Variabel
+                </p>
+              </div>
+              <span className="badge-brutal bg-retro-yellow text-black text-[11px]">
+                5 Aktivitas Siap
+              </span>
             </div>
-            <span className="text-xs text-slate-500 italic">
-              (Modul kurikulum akan dibuka pada fase berikutnya)
-            </span>
+            <p className="text-xs text-neutral-700 leading-relaxed font-medium">
+              Pelajari konsep kotak penyimpanan ajaib (variabel), tonton video penjelasan, selesaikan tantangan blok interaktif IA1 & IA2, serta kerjakan kuis evaluasi.
+            </p>
           </div>
         </div>
 
         {/* Route Guard Security Test Section */}
-        <div className="bg-slate-900/60 border border-amber-500/30 rounded-2xl p-6 space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-sm font-bold text-white">Uji Keamanan Route Guarding</h2>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Sebagai siswa, kamu tidak diperbolehkan membuka atau memuat halaman Admin. Klik tombol di bawah untuk membuktikan bahwa perlindungan rute langsung mencegat dan menampilkan blokir akses (403):
-              </p>
-            </div>
+        <div className="card-brutal bg-[#FAF7EE] border-2 border-black p-6 space-y-3">
+          <div className="flex items-center gap-2.5 text-black">
+            <ShieldAlert className="w-5 h-5 text-retro-pink" />
+            <h3 className="text-sm font-black uppercase tracking-wider">
+              Uji Keamanan Hak Akses (Route Guard Testing)
+            </h3>
           </div>
-
-          <div className="pt-2">
+          <p className="text-xs text-neutral-700 leading-relaxed font-medium">
+            Sebagai siswa, kamu tidak memiliki izin mengakses panel guru ataupun CMS kursus. Klik tombol di bawah untuk menguji sistem pencegahan akses:
+          </p>
+          <div className="pt-1">
             <Link
-              to="/admin/students"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition"
+              to="/admin/courses"
+              className="btn-brutal-white text-xs py-2 px-3.5 inline-flex items-center gap-2 hover:bg-retro-pink hover:text-white transition"
             >
-              Coba Buka /admin/students (Uji Blokir Rute)
+              <span>Uji Coba Buka Halaman /admin/courses (Blokir Rute)</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
@@ -124,4 +146,3 @@ export default function StudentDashboardPage() {
     </div>
   )
 }
-

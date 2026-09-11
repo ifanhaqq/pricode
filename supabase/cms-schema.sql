@@ -77,3 +77,4 @@ create policy "Select questions" on public.questions
 
 -- 7. Ensure any existing course is set to published for immediate visibility
 update public.courses set is_published = true where is_published = false;
+

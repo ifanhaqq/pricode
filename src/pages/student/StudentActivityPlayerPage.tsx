@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import TextActivityRenderer from '../../components/student/TextActivityRenderer'
 import VideoActivityRenderer from '../../components/student/VideoActivityRenderer'
 import BlockSequencer, { IABlockItem } from '../../components/student/BlockSequencer'
+import QuizEngine, { QuizQuestion, QuizResult } from '../../components/student/QuizEngine'
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,15 +15,17 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Code2
+  Code2,
+  HelpCircle,
+  Award
 } from 'lucide-react'
 
-type SupportedActivityType = 'text' | 'video' | 'ia1' | 'ia2'
+type SupportedActivityType = 'text' | 'video' | 'ia1' | 'ia2' | 'quiz'
 
 interface ActivityItem {
   id: string
   subcourse_id: string
-  type: SupportedActivityType | 'quiz'
+  type: SupportedActivityType
   order: number
   content_ref: Record<string, unknown>
 }
@@ -60,6 +64,13 @@ const STEP_DEFINITIONS: {
     shortLabel: 'Blok 2',
     icon: Puzzle,
     accentColor: 'bg-retro-lavender'
+  },
+  {
+    type: 'quiz',
+    label: '5. Kuis Sub-Materi',
+    shortLabel: 'Kuis',
+    icon: HelpCircle,
+    accentColor: 'bg-retro-yellow'
   }
 ]
 
@@ -70,6 +81,7 @@ export default function StudentActivityPlayerPage() {
   }>()
 
   const navigate = useNavigate()
+  const { studentProfile } = useAuth()
 
   const [courseTitle, setCourseTitle] = useState('')
   const [subCourseTitle, setSubCourseTitle] = useState('')
@@ -80,6 +92,16 @@ export default function StudentActivityPlayerPage() {
   const [iaBlocks, setIaBlocks] = useState<IABlockItem[]>([])
   const [loadingBlocks, setLoadingBlocks] = useState(false)
 
+  // Quiz data for SubCourse Quiz
+  const [quizTitle, setQuizTitle] = useState('')
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [loadingQuiz, setLoadingQuiz] = useState(false)
+  const [subcourseProgress, setSubcourseProgress] = useState<{
+    attempts: number
+    quiz_score: number | null
+    status: string
+  } | null>(null)
+
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -87,7 +109,7 @@ export default function StudentActivityPlayerPage() {
   useEffect(() => {
     if (
       routeActivityType &&
-      ['text', 'video', 'ia1', 'ia2'].includes(routeActivityType as SupportedActivityType)
+      ['text', 'video', 'ia1', 'ia2', 'quiz'].includes(routeActivityType as SupportedActivityType)
     ) {
       setCurrentType(routeActivityType as SupportedActivityType)
     } else {
@@ -177,6 +199,125 @@ export default function StudentActivityPlayerPage() {
     }
   }, [currentType, activities, fetchIABlocks])
 
+  // Fetch Quiz Data when currentType is 'quiz'
+  const fetchSubCourseQuizData = useCallback(async () => {
+    if (!supabase || !subcourseId) return
+    setLoadingQuiz(true)
+
+    try {
+      // 1. Fetch subcourse quiz record
+      const { data: qData, error: qErr } = await supabase
+        .from('sub_course_quizzes')
+        .select('*')
+        .eq('subcourse_id', subcourseId)
+        .maybeSingle()
+
+      if (qErr) throw qErr
+
+      if (qData) {
+        setQuizTitle(qData.title || `Kuis Evaluasi Sub-Materi: ${subCourseTitle}`)
+
+        // 2. Fetch questions for this quiz
+        const { data: questionsData, error: questionsErr } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('sub_course_quiz_id', qData.id)
+          .order('created_at', { ascending: true })
+
+        if (questionsErr) throw questionsErr
+
+        if (questionsData) {
+          setQuizQuestions(
+            questionsData.map((q) => ({
+              id: q.id,
+              prompt: q.prompt,
+              options: Array.isArray(q.options) ? q.options : [],
+              correct_answer: q.correct_answer,
+              subcourse_id_tag: q.subcourse_id_tag
+            }))
+          )
+        }
+      }
+
+      // 3. Fetch student's progress for this subcourse
+      let stId = studentProfile?.id
+      if (!stId) {
+        const { data: idData } = await supabase.rpc('get_current_student_id')
+        stId = idData
+      }
+
+      if (stId) {
+        const { data: progData } = await supabase
+          .from('progress')
+          .select('attempts, quiz_score, status')
+          .eq('student_id', stId)
+          .eq('subcourse_id', subcourseId)
+          .maybeSingle()
+
+        if (progData) {
+          setSubcourseProgress(progData)
+        }
+      }
+    } catch (err: unknown) {
+      const e = err as Error
+      setErrorMessage(e.message || 'Gagal memuat kuis sub-materi.')
+    } finally {
+      setLoadingQuiz(false)
+    }
+  }, [subcourseId, subCourseTitle, studentProfile?.id])
+
+  useEffect(() => {
+    if (currentType === 'quiz') {
+      fetchSubCourseQuizData()
+    }
+  }, [currentType, fetchSubCourseQuizData])
+
+  // Handle SubCourse Quiz Submission
+  const handleSubCourseQuizComplete = async (res: QuizResult) => {
+    if (!supabase || !subcourseId) return
+
+    try {
+      let stId = studentProfile?.id
+      if (!stId) {
+        const { data: idData } = await supabase.rpc('get_current_student_id')
+        stId = idData
+      }
+
+      if (!stId) {
+        console.warn('Student ID not found, unable to write progress to DB')
+        return
+      }
+
+      const nextAttempts = (subcourseProgress?.attempts || 0) + 1
+      const nextStatus = res.passed ? 'completed' : 'in_progress'
+
+      const { error: saveErr } = await supabase.from('progress').upsert(
+        {
+          student_id: stId,
+          subcourse_id: subcourseId,
+          status: nextStatus,
+          quiz_score: res.score,
+          attempts: nextAttempts,
+          cooldown_until: null,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'student_id,subcourse_id' }
+      )
+
+      if (saveErr) {
+        console.error('Error saving subcourse quiz progress:', saveErr)
+      } else {
+        setSubcourseProgress({
+          attempts: nextAttempts,
+          quiz_score: res.score,
+          status: nextStatus
+        })
+      }
+    } catch (err) {
+      console.error('Failed to update subcourse progress:', err)
+    }
+  }
+
   // Navigation helpers
   const currentStepIndex = STEP_DEFINITIONS.findIndex((s) => s.type === currentType)
 
@@ -246,12 +387,20 @@ export default function StudentActivityPlayerPage() {
           </div>
 
           {/* Current Step Counter Badge */}
-          <span className="badge-brutal text-xs bg-black text-white font-mono font-black shrink-0">
-            Langkah {currentStepIndex + 1} / {STEP_DEFINITIONS.length}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {subcourseProgress?.status === 'completed' && (
+              <span className="badge-brutal text-xs bg-retro-green text-black font-mono font-black hidden sm:inline-flex items-center gap-1">
+                <Award className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Lulus ({subcourseProgress.quiz_score}%)</span>
+              </span>
+            )}
+            <span className="badge-brutal text-xs bg-black text-white font-mono font-black">
+              Langkah {currentStepIndex + 1} / {STEP_DEFINITIONS.length}
+            </span>
+          </div>
         </div>
 
-        {/* Stepper Navigation Bar (Direct Navigation without Locking) */}
+        {/* Stepper Navigation Bar */}
         <div className="border-t-2 border-black bg-[#FAF7EE] overflow-x-auto py-2 px-4">
           <div className="max-w-6xl mx-auto flex items-center justify-center sm:justify-start gap-2 min-w-max">
             {STEP_DEFINITIONS.map((step, idx) => {
@@ -356,9 +505,44 @@ export default function StudentActivityPlayerPage() {
                 }
                 blocks={iaBlocks}
                 onNextActivity={() => {
-                  // After finishing IA2, return to dashboard or show completion toast
-                  navigate('/dashboard')
+                  goToActivity('quiz')
                 }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Step 5: SubCourse Quiz */}
+        {currentType === 'quiz' && (
+          <div>
+            {loadingQuiz ? (
+              <div className="card-brutal bg-white p-16 text-center space-y-3 font-bold text-neutral-600">
+                <Sparkles className="w-8 h-8 animate-spin mx-auto text-retro-yellow" />
+                <p className="text-sm">Menyiapkan soal kuis sub-materi...</p>
+              </div>
+            ) : quizQuestions.length === 0 ? (
+              <div className="card-brutal bg-white p-12 text-center space-y-3 font-bold text-neutral-600">
+                <HelpCircle className="w-10 h-10 mx-auto text-retro-yellow" />
+                <h3 className="text-base font-black text-black">Kuis Belum Tersedia</h3>
+                <p className="text-xs text-neutral-600">
+                  Guru sedang menyusun pertanyaan kuis evaluasi untuk sub-materi ini.
+                </p>
+                <div className="pt-2">
+                  <Link to="/dashboard" className="btn-brutal-yellow text-xs py-2 px-4 inline-block">
+                    Kembali ke Dashboard
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <QuizEngine
+                quizType="subcourse"
+                title={quizTitle || `Kuis Evaluasi: ${subCourseTitle}`}
+                subtitle="Jawab setiap soal pilihan ganda di bawah. Dapatkan nilai minimal 70% untuk menyelesaikan sub-materi ini. Jika belum berhasil, kamu dapat langsung mengulang kuis tanpa jeda waktu!"
+                questions={quizQuestions}
+                passThreshold={70}
+                onComplete={handleSubCourseQuizComplete}
+                backToDashboardUrl="/dashboard"
+                onContinueNext={() => navigate('/dashboard')}
               />
             )}
           </div>
@@ -392,7 +576,7 @@ export default function StudentActivityPlayerPage() {
               to="/dashboard"
               className="btn-brutal-green text-xs py-2 px-4 inline-flex items-center gap-1.5"
             >
-              <span>Kembali ke Dashboard</span>
+              <span>Selesai & Dashboard</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}

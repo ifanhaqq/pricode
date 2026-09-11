@@ -231,7 +231,7 @@ async function runVerification() {
 
   // 4c. Student 1 reads own progress
   {
-    const { data, error } = await student1.client.from('progress').select('*').eq('student_id', student1Id)
+    const { data, error } = await student1.client.from('progress').select('*').eq('student_id', student1Id).eq('subcourse_id', testSubcourseId)
     assert('Student 1 CAN read own progress', !error && data?.length === 1, error?.message)
   }
 
